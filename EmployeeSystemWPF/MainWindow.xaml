@@ -17,13 +17,6 @@
         <DockPanel>
 
             <!-- Status Bar -->
-            <Separator Background="Gray" Width="1" Margin="10,0"/>
-            <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock x:Name="StatusClockText"
-               Text="🕐 00:00:00"
-               Foreground="White"
-               FontSize="12"/>
-            </StatusBarItem>
             <StatusBar DockPanel.Dock="Bottom" Background="#212529" Height="30">
                 <StatusBarItem>
                     <TextBlock x:Name="StatusEmployeesText"
@@ -46,11 +39,18 @@
                                FontSize="12"/>
                 </StatusBarItem>
                 <Separator Background="Gray" Width="1" Margin="10,0"/>
-                <StatusBarItem HorizontalAlignment="Right">
+                <StatusBarItem>
                     <TextBlock x:Name="StatusSelectedText"
                                Text="Selected: None"
                                Foreground="#0d6efd"
                                FontWeight="Bold"
+                               FontSize="12"/>
+                </StatusBarItem>
+                <Separator Background="Gray" Width="1" Margin="10,0"/>
+                <StatusBarItem HorizontalAlignment="Right">
+                    <TextBlock x:Name="StatusClockText"
+                               Text="🕐 00:00:00"
+                               Foreground="White"
                                FontSize="12"/>
                 </StatusBarItem>
             </StatusBar>
@@ -59,12 +59,18 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="10">
 
-                    <!-- Title + Theme Toggle -->
+                    <!-- Title + Buttons -->
                     <DockPanel Margin="0,0,0,20">
                         <TextBlock Text="Employee Management System"
                                    FontSize="26"
                                    FontWeight="Bold"
                                    DockPanel.Dock="Left"/>
+                        <Button Content="🚪 Logout"
+                                Width="90"
+                                Height="35"
+                                HorizontalAlignment="Right"
+                                Margin="0,0,10,0"
+                                Click="Logout_Click"/>
                         <Button Content="ℹ️ About"
                                 Width="90"
                                 Height="35"
@@ -119,16 +125,19 @@
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="First Name" FontSize="11" Foreground="Gray" Margin="0,0,0,2"/>
                             <TextBox x:Name="FirstNameTextBox" Width="140" Height="30" ToolTip="First Name"/>
+                            <TextBlock x:Name="FirstNameError" Foreground="#dc3545" FontSize="10" Visibility="Collapsed"/>
                         </StackPanel>
 
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Last Name" FontSize="11" Foreground="Gray" Margin="0,0,0,2"/>
                             <TextBox x:Name="LastNameTextBox" Width="140" Height="30" ToolTip="Last Name"/>
+                            <TextBlock x:Name="LastNameError" Foreground="#dc3545" FontSize="10" Visibility="Collapsed"/>
                         </StackPanel>
 
                         <StackPanel Margin="0,0,10,10">
                             <TextBlock Text="Salary" FontSize="11" Foreground="Gray" Margin="0,0,0,2"/>
                             <TextBox x:Name="SalaryTextBox" Width="100" Height="30" ToolTip="Salary"/>
+                            <TextBlock x:Name="SalaryError" Foreground="#dc3545" FontSize="10" Visibility="Collapsed"/>
                         </StackPanel>
 
                         <StackPanel Margin="0,0,10,10">
@@ -137,6 +146,7 @@
                                       Width="180" Height="30"
                                       DisplayMemberPath="DepartmentName"
                                       SelectedValuePath="DepartmentId"/>
+                            <TextBlock x:Name="DepartmentError" Foreground="#dc3545" FontSize="10" Visibility="Collapsed"/>
                         </StackPanel>
 
                         <StackPanel Margin="0,0,10,10">
@@ -280,8 +290,8 @@
                                                     <Run Text="{Binding HireDate, StringFormat={}{0:dd/MM/yyyy}, TargetNullValue='N/A'}"/>
                                                 </TextBlock>
                                                 <TextBlock>
-    <Run Text="⏳ Years of Service: " FontWeight="Bold"/>
-    <Run Text="{Binding YearsOfService, Mode=OneWay, TargetNullValue='N/A'}"/>
+                                                    <Run Text="⏳ Years of Service: " FontWeight="Bold"/>
+                                                    <Run Text="{Binding YearsOfService, Mode=OneWay, TargetNullValue='N/A'}"/>
                                                 </TextBlock>
                                             </StackPanel>
                                         </ToolTip>
@@ -325,8 +335,8 @@
                                                 SortMemberPath="HireDate"/>
 
                             <DataGridTextColumn Header="Years of Service"
-                    Binding="{Binding YearsOfService, Mode=OneWay}"
-                    SortMemberPath="HireDate"/>
+                                                Binding="{Binding YearsOfService, Mode=OneWay}"
+                                                SortMemberPath="HireDate"/>
 
                             <DataGridTemplateColumn Header="Photo" CanUserSort="False">
                                 <DataGridTemplateColumn.CellTemplate>

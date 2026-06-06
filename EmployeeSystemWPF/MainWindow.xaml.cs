@@ -1,5 +1,5 @@
-﻿using EmployeeSystemWPF;
-using MySql.Data.MySqlClient;
+﻿using EmployeeSystemWPF.BusinessLayer;
+using EmployeeSystemWPF.DataLayer;
 using System;
 using System.Collections.Generic;
 using System.Windows;
@@ -13,11 +13,13 @@ namespace EmployeeSystemWPF
 {
     public partial class MainWindow : Window
     {
-        Db db = new Db();
+        private readonly EmployeeService _employeeService = new EmployeeService();
+        private readonly DepartmentService _departmentService = new DepartmentService();
         private int selectedEmployeeId = 0;
         private string selectedPhotoPath = "";
         private bool isDarkMode = false;
         private System.Windows.Threading.DispatcherTimer _clock;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -31,130 +33,36 @@ namespace EmployeeSystemWPF
         {
             try
             {
-                List<Department> departments = new List<Department>();
-
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-                    string query = "SELECT department_id, department_name FROM departments";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    MySqlDataReader reader = cmd.ExecuteReader();
-
-                    while (reader.Read())
-                    {
-                        departments.Add(new Department
-                        {
-                            DepartmentId = Convert.ToInt32(reader["department_id"]),
-                            DepartmentName = reader["department_name"].ToString()
-                        });
-                    }
-                }
-
+                var departments = _departmentService.GetAllDepartments();
                 DepartmentComboBox.ItemsSource = departments;
                 FilterDepartmentComboBox.ItemsSource = departments;
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void LoadDashboardStats()
         {
             try
             {
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    MySqlCommand totalEmployeesCmd = new MySqlCommand("SELECT COUNT(*) FROM employees", conn);
-                    MySqlCommand totalDepartmentsCmd = new MySqlCommand("SELECT COUNT(*) FROM departments", conn);
-                    MySqlCommand avgSalaryCmd = new MySqlCommand("SELECT AVG(salary) FROM employees", conn);
-                    MySqlCommand maxSalaryCmd = new MySqlCommand("SELECT MAX(salary) FROM employees", conn);
-                    MySqlCommand minSalaryCmd = new MySqlCommand("SELECT MIN(salary) FROM employees", conn);
-
-                    TotalEmployeesText.Text = totalEmployeesCmd.ExecuteScalar().ToString();
-                    TotalDepartmentsText.Text = totalDepartmentsCmd.ExecuteScalar().ToString();
-
-                    object avgSalary = avgSalaryCmd.ExecuteScalar();
-                    object maxSalary = maxSalaryCmd.ExecuteScalar();
-                    object minSalary = minSalaryCmd.ExecuteScalar();
-
-                    AverageSalaryText.Text = "$" + Convert.ToDecimal(avgSalary).ToString("0.00");
-                    MaxSalaryText.Text = "$" + Convert.ToDecimal(maxSalary).ToString("0.00");
-                    MinSalaryText.Text = "$" + Convert.ToDecimal(minSalary).ToString("0.00");
-                }
+                var stats = _employeeService.GetDashboardStats();
+                TotalEmployeesText.Text = stats.TotalEmployees.ToString();
+                TotalDepartmentsText.Text = stats.TotalDepartments.ToString();
+                AverageSalaryText.Text = "$" + stats.AverageSalary.ToString("0.00");
+                MaxSalaryText.Text = "$" + stats.MaxSalary.ToString("0.00");
+                MinSalaryText.Text = "$" + stats.MinSalary.ToString("0.00");
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
-        }
-
-        private List<Employee> ReadEmployees(MySqlDataReader reader)
-        {
-            List<Employee> employees = new List<Employee>();
-
-            while (reader.Read())
-            {
-                string photoFile = reader["photo"].ToString();
-
-                employees.Add(new Employee
-                {
-                    EmployeeId = Convert.ToInt32(reader["employee_id"]),
-                    FirstName = reader["first_name"].ToString(),
-                    LastName = reader["last_name"].ToString(),
-                    Salary = Convert.ToDecimal(reader["salary"]),
-                    Email = reader["email"].ToString(),
-                    Phone = reader["phone"].ToString(),
-                    HireDate = reader["hire_date"] == DBNull.Value
-                        ? (DateTime?)null
-                        : Convert.ToDateTime(reader["hire_date"]),
-                    Department = reader["department_name"].ToString(),
-                    Photo = string.IsNullOrEmpty(photoFile)
-                        ? null
-                        : @"C:\xampp\htdocs\hr_system\uploads\" + photoFile
-                });
-            }
-
-            return employees;
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void LoadEmployees_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    string query = @"
-                        SELECT
-                            e.employee_id,
-                            e.first_name,
-                            e.last_name,
-                            e.salary,
-                            e.email,
-                            e.phone,
-                            e.hire_date,
-                            d.department_name,
-                            e.photo
-                        FROM employees e
-                        LEFT JOIN departments d
-                        ON e.department_id = d.department_id";
-
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    MySqlDataReader reader = cmd.ExecuteReader();
-                    List<Employee> employees = ReadEmployees(reader);
-
-                    EmployeesGrid.ItemsSource = employees;
-                    UpdateStatusBar("All", employees.Count);
-                }
+                var employees = _employeeService.GetAllEmployees();
+                EmployeesGrid.ItemsSource = employees;
+                UpdateStatusBar("All", employees.Count);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void ChoosePhoto_Click(object sender, RoutedEventArgs e)
@@ -169,71 +77,65 @@ namespace EmployeeSystemWPF
             }
         }
 
+        private bool ValidateFields()
+        {
+            bool isValid = true;
+
+            FirstNameError.Visibility = Visibility.Collapsed;
+            LastNameError.Visibility = Visibility.Collapsed;
+            SalaryError.Visibility = Visibility.Collapsed;
+            DepartmentError.Visibility = Visibility.Collapsed;
+
+            if (string.IsNullOrWhiteSpace(FirstNameTextBox.Text) || FirstNameTextBox.Text.Length < 2)
+            {
+                FirstNameError.Text = "⚠ First name must have at least 2 characters.";
+                FirstNameError.Visibility = Visibility.Visible;
+                isValid = false;
+            }
+
+            if (string.IsNullOrWhiteSpace(LastNameTextBox.Text) || LastNameTextBox.Text.Length < 2)
+            {
+                LastNameError.Text = "⚠ Last name must have at least 2 characters.";
+                LastNameError.Visibility = Visibility.Visible;
+                isValid = false;
+            }
+
+            if (!decimal.TryParse(SalaryTextBox.Text, out decimal salary) || salary <= 0)
+            {
+                SalaryError.Text = "⚠ Enter a valid salary > 0.";
+                SalaryError.Visibility = Visibility.Visible;
+                isValid = false;
+            }
+
+            if (DepartmentComboBox.SelectedValue == null)
+            {
+                DepartmentError.Text = "⚠ Please select a department.";
+                DepartmentError.Visibility = Visibility.Visible;
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
         private void AddEmployee_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(FirstNameTextBox.Text) ||
-                    string.IsNullOrWhiteSpace(LastNameTextBox.Text) ||
-                    string.IsNullOrWhiteSpace(SalaryTextBox.Text) ||
-                    DepartmentComboBox.SelectedValue == null)
+                if (!ValidateFields()) return;
+
+                int deptId = Convert.ToInt32(DepartmentComboBox.SelectedValue);
+
+                var emp = new Employee
                 {
-                    MessageBox.Show("Please fill all fields.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
+                    FirstName = FirstNameTextBox.Text.Trim(),
+                    LastName = LastNameTextBox.Text.Trim(),
+                    Salary = decimal.Parse(SalaryTextBox.Text),
+                    Email = EmailTextBox.Text.Trim(),
+                    Phone = PhoneTextBox.Text.Trim(),
+                    HireDate = HireDatePicker.SelectedDate
+                };
 
-                if (!decimal.TryParse(SalaryTextBox.Text, out decimal salary) || salary <= 0)
-                {
-                    MessageBox.Show("Please enter a valid salary greater than 0.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                if (FirstNameTextBox.Text.Length < 2 || LastNameTextBox.Text.Length < 2)
-                {
-                    MessageBox.Show("First and Last name must have at least 2 characters.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                int departmentId = Convert.ToInt32(DepartmentComboBox.SelectedValue);
-
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    string photoFileName = null;
-
-                    if (!string.IsNullOrEmpty(selectedPhotoPath))
-                    {
-                        photoFileName = DateTime.Now.Ticks + "_" + Path.GetFileName(selectedPhotoPath);
-                        string destinationPath = @"C:\xampp\htdocs\hr_system\uploads\" + photoFileName;
-                        File.Copy(selectedPhotoPath, destinationPath, true);
-                    }
-
-                    string query = @"
-                        INSERT INTO employees
-                        (first_name, last_name, salary, department_id, email, phone, hire_date, photo)
-                        VALUES
-                        (@first_name, @last_name, @salary, @department_id, @email, @phone, @hire_date, @photo)";
-
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@first_name", FirstNameTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@last_name", LastNameTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@salary", salary);
-                    cmd.Parameters.AddWithValue("@department_id", departmentId);
-                    cmd.Parameters.AddWithValue("@email", EmailTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@phone", PhoneTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@hire_date",
-                        HireDatePicker.SelectedDate.HasValue
-                        ? (object)HireDatePicker.SelectedDate.Value
-                        : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@photo", (object)photoFileName ?? DBNull.Value);
-
-                    cmd.ExecuteNonQuery();
-                }
-
+                _employeeService.AddEmployee(emp, deptId, selectedPhotoPath);
                 MessageBox.Show("Employee added successfully.", "Success",
                     MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -242,43 +144,29 @@ namespace EmployeeSystemWPF
                 LoadEmployees_Click(null, null);
                 LoadDashboardStats();
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void DeleteEmployee_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                Employee selectedEmployee = EmployeesGrid.SelectedItem as Employee;
+                var selected = EmployeesGrid.SelectedItem as Employee;
 
-                if (selectedEmployee == null)
+                if (selected == null)
                 {
                     MessageBox.Show("Please select an employee.", "Warning",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
-                MessageBoxResult result = MessageBox.Show(
-                    $"Are you sure you want to delete {selectedEmployee.FirstName} {selectedEmployee.LastName}?",
-                    "Confirm Delete",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning
-                );
+                var result = MessageBox.Show(
+                    $"Are you sure you want to delete {selected.FirstName} {selected.LastName}?",
+                    "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
                 if (result != MessageBoxResult.Yes) return;
 
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-                    string query = "DELETE FROM employees WHERE employee_id = @id";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@id", selectedEmployee.EmployeeId);
-                    cmd.ExecuteNonQuery();
-                }
-
+                _employeeService.DeleteEmployee(selected.EmployeeId);
                 MessageBox.Show("Employee deleted successfully.", "Success",
                     MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -286,10 +174,7 @@ namespace EmployeeSystemWPF
                 LoadEmployees_Click(null, null);
                 LoadDashboardStats();
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void EditEmployee_Click(object sender, RoutedEventArgs e)
@@ -332,73 +217,22 @@ namespace EmployeeSystemWPF
                     return;
                 }
 
-                if (string.IsNullOrWhiteSpace(FirstNameTextBox.Text) ||
-                    string.IsNullOrWhiteSpace(LastNameTextBox.Text) ||
-                    string.IsNullOrWhiteSpace(SalaryTextBox.Text) ||
-                    DepartmentComboBox.SelectedValue == null)
+                if (!ValidateFields()) return;
+
+                int deptId = Convert.ToInt32(DepartmentComboBox.SelectedValue);
+
+                var emp = new Employee
                 {
-                    MessageBox.Show("Please fill all fields.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
+                    EmployeeId = selectedEmployeeId,
+                    FirstName = FirstNameTextBox.Text.Trim(),
+                    LastName = LastNameTextBox.Text.Trim(),
+                    Salary = decimal.Parse(SalaryTextBox.Text),
+                    Email = EmailTextBox.Text.Trim(),
+                    Phone = PhoneTextBox.Text.Trim(),
+                    HireDate = HireDatePicker.SelectedDate
+                };
 
-                if (!decimal.TryParse(SalaryTextBox.Text, out decimal salary) || salary <= 0)
-                {
-                    MessageBox.Show("Please enter a valid salary greater than 0.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                if (FirstNameTextBox.Text.Length < 2 || LastNameTextBox.Text.Length < 2)
-                {
-                    MessageBox.Show("First and Last name must have at least 2 characters.", "Validation Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                int departmentId = Convert.ToInt32(DepartmentComboBox.SelectedValue);
-                string photoFileName = null;
-
-                if (!string.IsNullOrEmpty(selectedPhotoPath))
-                {
-                    photoFileName = DateTime.Now.Ticks + "_" + Path.GetFileName(selectedPhotoPath);
-                    string destinationPath = @"C:\xampp\htdocs\hr_system\uploads\" + photoFileName;
-                    File.Copy(selectedPhotoPath, destinationPath, true);
-                }
-
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    string query = @"
-                        UPDATE employees
-                        SET first_name = @first_name,
-                            last_name = @last_name,
-                            salary = @salary,
-                            department_id = @department_id,
-                            email = @email,
-                            phone = @phone,
-                            hire_date = @hire_date,
-                            photo = IFNULL(@photo, photo)
-                        WHERE employee_id = @employee_id";
-
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@first_name", FirstNameTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@last_name", LastNameTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@salary", salary);
-                    cmd.Parameters.AddWithValue("@department_id", departmentId);
-                    cmd.Parameters.AddWithValue("@email", EmailTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@phone", PhoneTextBox.Text.Trim());
-                    cmd.Parameters.AddWithValue("@hire_date",
-                        HireDatePicker.SelectedDate.HasValue
-                        ? (object)HireDatePicker.SelectedDate.Value
-                        : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@employee_id", selectedEmployeeId);
-                    cmd.Parameters.AddWithValue("@photo", (object)photoFileName ?? DBNull.Value);
-
-                    cmd.ExecuteNonQuery();
-                }
-
+                _employeeService.UpdateEmployee(emp, deptId, selectedPhotoPath);
                 MessageBox.Show("Employee updated successfully.", "Success",
                     MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -407,10 +241,7 @@ namespace EmployeeSystemWPF
                 LoadEmployees_Click(null, null);
                 LoadDashboardStats();
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void SearchEmployee_Click(object sender, RoutedEventArgs e)
@@ -418,100 +249,55 @@ namespace EmployeeSystemWPF
             try
             {
                 string search = SearchTextBox.Text.Trim();
-
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    string query = @"
-                        SELECT
-                            e.employee_id,
-                            e.first_name,
-                            e.last_name,
-                            e.salary,
-                            e.email,
-                            e.phone,
-                            e.hire_date,
-                            d.department_name,
-                            e.photo
-                        FROM employees e
-                        LEFT JOIN departments d
-                        ON e.department_id = d.department_id
-                        WHERE e.first_name LIKE @search
-                           OR e.last_name LIKE @search
-                           OR e.email LIKE @search
-                           OR e.phone LIKE @search
-                           OR d.department_name LIKE @search";
-
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@search", "%" + search + "%");
-
-                    MySqlDataReader reader = cmd.ExecuteReader();
-                    List<Employee> employees = ReadEmployees(reader);
-
-                    EmployeesGrid.ItemsSource = employees;
-                    UpdateStatusBar("Search: " + search, employees.Count);
-                }
+                var employees = _employeeService.SearchEmployees(search);
+                EmployeesGrid.ItemsSource = employees;
+                UpdateStatusBar("Search: " + search, employees.Count);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void FilterByDepartment_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (FilterDepartmentComboBox.SelectedValue == null) return;
-
             try
             {
-                int departmentId = Convert.ToInt32(FilterDepartmentComboBox.SelectedValue);
-
-                using (MySqlConnection conn = db.GetConnection())
-                {
-                    conn.Open();
-
-                    string query = @"
-                        SELECT
-                            e.employee_id,
-                            e.first_name,
-                            e.last_name,
-                            e.salary,
-                            e.email,
-                            e.phone,
-                            e.hire_date,
-                            d.department_name,
-                            e.photo
-                        FROM employees e
-                        LEFT JOIN departments d
-                        ON e.department_id = d.department_id
-                        WHERE e.department_id = @department_id";
-
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@department_id", departmentId);
-
-                    MySqlDataReader reader = cmd.ExecuteReader();
-                    List<Employee> employees = ReadEmployees(reader);
-
-                    EmployeesGrid.ItemsSource = employees;
-                    var dept = FilterDepartmentComboBox.SelectedItem as Department;
-                    UpdateStatusBar("Department: " + dept.DepartmentName, employees.Count);
-                }
+                int deptId = Convert.ToInt32(FilterDepartmentComboBox.SelectedValue);
+                var employees = _employeeService.GetByDepartment(deptId);
+                EmployeesGrid.ItemsSource = employees;
+                var dept = FilterDepartmentComboBox.SelectedItem as Department;
+                UpdateStatusBar("Department: " + dept.DepartmentName, employees.Count);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
+
+        private void ClearFilter_Click(object sender, RoutedEventArgs e)
+        {
+            FilterDepartmentComboBox.SelectedIndex = -1;
+            LoadEmployees_Click(null, null);
+        }
+
         private void About_Click(object sender, RoutedEventArgs e)
         {
             AboutWindow about = new AboutWindow();
             about.ShowDialog();
         }
-        private void ClearFilter_Click(object sender, RoutedEventArgs e)
+
+        private void Logout_Click(object sender, RoutedEventArgs e)
         {
-            FilterDepartmentComboBox.SelectedIndex = -1;
-            LoadEmployees_Click(null, null);
+            var result = MessageBox.Show(
+                "Are you sure you want to logout?",
+                "Logout",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            _clock.Stop();
+
+            LoginWindow login = new LoginWindow();
+            Application.Current.MainWindow = login;
+            login.Show();
+            this.Close();
         }
 
         private void ThemeToggle_Click(object sender, RoutedEventArgs e)
@@ -646,10 +432,7 @@ namespace EmployeeSystemWPF
                 MessageBox.Show("PDF exported successfully!", "Success",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void ExportToExcel_Click(object sender, RoutedEventArgs e)
@@ -723,10 +506,7 @@ namespace EmployeeSystemWPF
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void EmployeesGrid_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -793,6 +573,11 @@ namespace EmployeeSystemWPF
             HireDatePicker.SelectedDate = null;
             DepartmentComboBox.SelectedIndex = -1;
             selectedEmployeeId = 0;
+
+            FirstNameError.Visibility = Visibility.Collapsed;
+            LastNameError.Visibility = Visibility.Collapsed;
+            SalaryError.Visibility = Visibility.Collapsed;
+            DepartmentError.Visibility = Visibility.Collapsed;
         }
     }
 }
